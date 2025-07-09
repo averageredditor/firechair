@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import re
 import time
 import csv
+import sqlite3
 from tqdm import tqdm
 
 MODEL = "honda cbr 600f"
@@ -63,6 +64,28 @@ def save_to_csv(data, filename=None):
         writer.writerows(data)
 
 
+
+def save_to_db(data, model="unbekannt"):
+    conn = sqlite3.connect("motorrad.db")
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS anzeigen (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT UNIQUE,
+            preis TEXT,
+            kilometer TEXT,
+            modell TEXT
+        )
+    """)
+    for eintrag in data:
+        c.execute("""
+            INSERT OR IGNORE INTO anzeigen (url, preis, kilometer, modell)
+            VALUES (?, ?, ?, ?)
+        """, (eintrag["url"], eintrag["preis"], eintrag["kilometer"], model))
+    conn.commit()
+    conn.close()
+
+
 def build_page_url(query: str, page: int) -> str:
     base = f"https://www.kleinanzeigen.de/s-{query}/k0c305"
     return base  if page == 1 else f"https://www.kleinanzeigen.de/Seite:{page}/s-{query}/k0c305"
@@ -113,14 +136,21 @@ def get_max_pages(query):
         return 1
 
 def parse_number(value: str) -> int:
-    """Hilfsfunktion: Wandelt '4.600 €' oder '84.000 km' in eine ganze Zahl um"""
     if not value:
-        return float('inf')  # Damit leere Werte beim Min-Vergleich ignoriert werden
-    value = value.replace(".", "").replace("€", "").replace("km", "").replace("KM", "").replace("Kilometer", "").strip()
+        return float("inf")
+    cleaned = (
+        value.replace(".", "")
+             .replace("€", "")
+             .replace("km", "")
+             .replace("KM", "")
+             .replace("Kilometer", "")
+             .strip()
+    )
     try:
-        return int(value)
+        return int(cleaned)
     except ValueError:
-        return float('inf')  # Im Fehlerfall ebenfalls ignorieren
+        return float("inf")
+
 
 def print_summary(data):
     if not data:
